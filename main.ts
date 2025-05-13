@@ -1,4 +1,6 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
+import { GraphOverlay } from 'GraphOverlay';
+import { App, Editor, MarkdownView, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
+import { Vector, getAngle, getDistance } from 'Vector';
 
 
 interface SpatialGraphPanelsSettings {
@@ -16,21 +18,6 @@ function moveElement(element: HTMLElement, x: number, y: number) {
 
 function minBy<T>(items: T[], sortKey: (item: T) => number): T {
 	return items.reduce((min, item) => sortKey(item) < sortKey(min) ? item : min, items[0]);
-}
-
-
-type Vector = {x: number; y: number}
-
-function getDistance(v1: Vector, v2: Vector) {
-	return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2)
-}
-
-// degrees from startingAt -> startingAt + 360
-function getAngle(v1: Vector, v2: Vector, startingAt = 0) {
-    // Normally, it'd be v2.y - v1.y, but the y axis is flipped
-    const radians = Math.atan2(v1.y - v2.y, v2.x - v1.x)
-    const degrees = (radians * 360) / (2 * Math.PI)
-    return ((degrees + 360 - startingAt) % 360) + startingAt
 }
 
 
@@ -71,8 +58,22 @@ function closestPanelInCone(
 }
 
 
+
+
 export default class SpatialGraphPanels extends Plugin {
 	settings: SpatialGraphPanelsSettings;
+
+	getGraph(): GraphOverlay {
+		let graphOverlay = this.app.workspace.containerEl.querySelector('.spatial-graph-overlay')
+		if (!graphOverlay) {
+			const overlayContainer = this.app.workspace.containerEl.querySelector('.mod-root')
+			if (!overlayContainer) {
+				throw new Error('Container for graph overlay not instantiated yet')
+			}
+			graphOverlay = overlayContainer.createEl('div', {cls: 'spatial-graph-overlay'})
+		}
+		return GraphOverlay.get(graphOverlay as HTMLElement)
+	}
 
 	addCommandForEachDirection(
 		id: string,
@@ -198,7 +199,6 @@ export default class SpatialGraphPanels extends Plugin {
 						break;
 				}
 				if (panelToFocus) {
-					console.log(panelToFocus)
 					this.app.workspace.setActiveLeaf(panelToFocus, {focus: true})
 				}
 			}	
@@ -210,20 +210,47 @@ export default class SpatialGraphPanels extends Plugin {
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				const link = getLinkAtCursor(editor)
 				if (link) {
+					const linkPath = `${link}.md`
 					const existingPanel = this.allPanels().find(
-						leaf => leaf.getViewState().state?.file === `${link}.md`
+						leaf => leaf.getViewState().state?.file === linkPath
 					)
 					if (existingPanel) {
 						this.app.workspace.setActiveLeaf(existingPanel, {focus: true})
 					} else {
-						this.app.workspace.openLinkText(link, `${link}.md`, 'split')
+						this.app.workspace.openLinkText(link, linkPath, 'split')
 					}
+
+					this.getGraph().addNode(linkPath, view.file?.path)
 				}
 			}
 		})
 
+		this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf) => {
+			if (leaf.view.getViewType() === 'markdown') {
+				const panelElement = leaf.view.containerEl.closest('.workspace-tabs') as HTMLElement
+				console.log(leaf.getViewState().state)
+			}
+		})
+
+
 		this.app.workspace.on('file-open', (file: TFile) => {
-			console.log(file)
+			const graph = this.getGraph()
+			graph.addNode(file.path)
+
+			const panelsByFileName = new Map<string, WorkspaceLeaf>()
+			this.allPanels().forEach(leaf => {
+				console.log(leaf.getViewState().state)
+				panelsByFileName.set(leaf.getViewState().state?.file as string, leaf)
+			})
+
+			graph.runLayout((nodeId: string) => {
+				const panel = panelsByFileName.get(nodeId)
+				if (!panel) {
+					throw new Error(`Panel for ${nodeId} not found`)
+				}
+				console.log(panel.view.containerEl)
+				return panel.view.containerEl.getBoundingClientRect()
+			})
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
@@ -231,7 +258,7 @@ export default class SpatialGraphPanels extends Plugin {
 	}
 
 	onunload() {
-
+		GraphOverlay.cleanup()
 	}
 
 	async loadSettings() {

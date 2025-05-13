@@ -11,8 +11,13 @@ If your plugin does not need CSS, delete this file.
     position: absolute;
     width: 500px !important;
     height: 500px !important;
+    z-index: 1;
 }
 
 .mod-root {
     overflow: scroll;
+}
+
+.spatial-graph-overlay {
+    z-index: 0;
 }

@@ -1,81 +1,233 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
+interface SpatialGraphPanelsSettings {
 	mySetting: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: SpatialGraphPanelsSettings = {
 	mySetting: 'default'
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+function moveElement(element: HTMLElement, x: number, y: number) {
+	element.style.left = `${(parseInt(element.style.left, 10) || 0) + x}px`;
+	element.style.top = `${(parseInt(element.style.top, 10) || 0) + y}px`;
+}
+
+function minBy<T>(items: T[], sortKey: (item: T) => number): T {
+	return items.reduce((min, item) => sortKey(item) < sortKey(min) ? item : min, items[0]);
+}
+
+
+type Vector = {x: number; y: number}
+
+function getDistance(v1: Vector, v2: Vector) {
+	return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2)
+}
+
+// degrees from startingAt -> startingAt + 360
+function getAngle(v1: Vector, v2: Vector, startingAt = 0) {
+    // Normally, it'd be v2.y - v1.y, but the y axis is flipped
+    const radians = Math.atan2(v1.y - v2.y, v2.x - v1.x)
+    const degrees = (radians * 360) / (2 * Math.PI)
+    return ((degrees + 360 - startingAt) % 360) + startingAt
+}
+
+
+function getPanelCenter(panel: HTMLElement): Vector {
+	const rect = panel.getBoundingClientRect();
+	return {
+		x: rect.left + rect.width / 2,
+		y: rect.top + rect.height / 2,
+	}
+}	
+
+
+function closestPanelInCone(
+	origin: Vector,
+	otherPanels: WorkspaceLeaf[],
+	coneCenter: number, 
+	coneWidth: number, 
+	doublingAngle = 70,
+): WorkspaceLeaf | undefined {
+	const lowerAngle = coneCenter - coneWidth / 2
+	const higherAngle = coneCenter + coneWidth / 2
+	const polarDistances = otherPanels.map((otherPanel) => ({
+		panel: otherPanel,
+		angle: getAngle(origin, getPanelCenter(otherPanel.view.containerEl), lowerAngle),
+		distance: getDistance(origin, getPanelCenter(otherPanel.view.containerEl)),
+	}))
+
+	// Treat nodes offset by the doublingAngle as twice as far away
+	const adjustedDistance = (distance: number, offsetFromConeCenter: number) =>
+		(distance * (doublingAngle + Math.abs(offsetFromConeCenter))) / doublingAngle
+
+	const polarDistancesInCone = polarDistances.filter(({angle}) => lowerAngle < angle && angle < higherAngle)
+
+	return minBy(
+		polarDistancesInCone, 
+		({distance, angle}) => adjustedDistance(distance, angle - coneCenter)
+	)?.panel
+}
+
+
+export default class SpatialGraphPanels extends Plugin {
+	settings: SpatialGraphPanelsSettings;
+
+	addCommandForEachDirection(
+		id: string,
+		name: string,
+		manipulateElement: (panelEl: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => void,
+	) {
+		this.addCommand({
+			id: `${id}-left`,
+			name: `${name} left`,
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				manipulateElement(view.containerEl, 'left')
+			}
+		});
+		this.addCommand({
+			id: `${id}-down`,
+			name: `${name} down`,
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				manipulateElement(view.containerEl, 'down')
+			}
+		});
+		this.addCommand({
+			id: `${id}-up`,
+			name: `${name} up`,
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				manipulateElement(view.containerEl, 'up')
+			}
+		});
+		this.addCommand({
+			id: `${id}-right`,
+			name: `${name} right`,
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				manipulateElement(view.containerEl, 'right')
+			}
+		});
+	}
+
+	allPanels(): WorkspaceLeaf[] {
+		const panels: WorkspaceLeaf[] = []
+		this.app.workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+			if (
+				leaf.view.getViewType() === 'markdown' &&
+				leaf.view.containerEl.getBoundingClientRect().width > 0
+			) {
+				panels.push(leaf)
+			}
+		});
+		return panels
+	}
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
-
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+		this.addCommandForEachDirection(
+			'pan', 
+			'Pan the spatial graph camera', 
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const camera = element.closest('.mod-root') as HTMLElement; 
+				switch (direction) {
+					case 'left':
+						camera.scrollBy(-50, 0)
+						break;
+					case 'down':
+						camera.scrollBy(0, 50)
+						break;
+					case 'up':
+						camera.scrollBy(0, -50)
+						break;
+					case 'right':
+						camera.scrollBy(50, 0)
+						break;
 				}
 			}
+		)
+
+		this.addCommandForEachDirection(
+			'move-panel',
+			'Move the currently focused panel',
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const panel = element.closest('.workspace-tabs') as HTMLElement;
+				switch (direction) {
+					case 'left':
+						moveElement(panel, -50, 0)
+						break;
+					case 'down':
+						moveElement(panel, 0, 50)
+						break;
+					case 'up':
+						moveElement(panel, 0, -50)
+						break;
+					case 'right':
+						moveElement(panel, 50, 0)
+						break;
+				}
+			}	
+		)
+
+		this.addCommandForEachDirection(
+			'focus-panel',
+			'Focus the panel to the',
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const cursor = element.querySelector('.cm-cursor-primary') as HTMLElement;
+				const cursorPosition = {
+					x: cursor.getBoundingClientRect().left,
+					y: cursor.getBoundingClientRect().top,
+				}
+				const otherPanels = this.allPanels().filter(
+					leaf => !leaf.view.containerEl.contains(cursor)
+				);
+
+				let panelToFocus: WorkspaceLeaf | undefined;
+				switch (direction) {
+					case 'left':
+						panelToFocus = closestPanelInCone(cursorPosition, otherPanels, 180, 140)
+						break;
+					case 'down':
+						panelToFocus = closestPanelInCone(cursorPosition, otherPanels, -90, 140)
+						break;
+					case 'up':
+						panelToFocus = closestPanelInCone(cursorPosition, otherPanels, 90, 140)
+						break;
+					case 'right':
+						panelToFocus = closestPanelInCone(cursorPosition, otherPanels, 0, 140)
+						break;
+				}
+				if (panelToFocus) {
+					console.log(panelToFocus)
+					this.app.workspace.setActiveLeaf(panelToFocus, {focus: true})
+				}
+			}	
+		)
+
+		this.addCommand({
+			id: 'jump-to-panel-for-link',
+			name: "Jump to an existing panel for the link under the cursor, or create a new one if it doesn't exist yet",
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				const link = getLinkAtCursor(editor)
+				if (link) {
+					const existingPanel = this.allPanels().find(
+						leaf => leaf.getViewState().state?.file === `${link}.md`
+					)
+					if (existingPanel) {
+						this.app.workspace.setActiveLeaf(existingPanel, {focus: true})
+					} else {
+						this.app.workspace.openLinkText(link, `${link}.md`, 'split')
+					}
+				}
+			}
+		})
+
+		this.app.workspace.on('file-open', (file: TFile) => {
+			console.log(file)
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
 	onunload() {
@@ -91,26 +243,16 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
+function logAndReturn<T>(value: T): T {
+	console.log(value)
+	return value
+}	
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: SpatialGraphPanels;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: SpatialGraphPanels) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -131,4 +273,26 @@ class SampleSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 	}
+}
+
+function getLinkAtCursor(editor: Editor): string | null {
+    const cursor = editor.getCursor();
+    
+    const line = editor.getLine(cursor.line);
+    
+    const ch = cursor.ch;
+    
+    const wikiLinkRegex = /\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g;
+    let match;
+    
+    while ((match = wikiLinkRegex.exec(line)) !== null) {
+        const linkStart = match.index;
+        const linkEnd = linkStart + match[0].length;
+        
+        if (ch >= linkStart && ch <= linkEnd) {
+            return match[1]
+		}
+    }
+    
+    return null;
 }

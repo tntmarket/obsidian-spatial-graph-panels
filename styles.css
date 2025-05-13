@@ -6,3 +6,13 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.workspace-tabs {
+    position: absolute;
+    width: 500px !important;
+    height: 500px !important;
+}
+
+.mod-root {
+    overflow: scroll;
+}

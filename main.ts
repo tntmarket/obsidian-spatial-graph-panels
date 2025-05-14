@@ -211,6 +211,7 @@ export default class SpatialGraphPanels extends Plugin {
 				}
 				if (panelToFocus) {
 					selectAndPanIntoView(canvas, panelToFocus)
+					editSelectedNode(canvas, panelToFocus)
 				}
 			}	
 		)
@@ -271,6 +272,42 @@ function logAndReturn<T>(value: T): T {
 	console.log(value)
 	return value
 }	
+
+async function editSelectedNode(canvas: Canvas, selectedNode: Node) {
+	let menu = canvas.wrapperEl.querySelector('.canvas-menu-container') as HTMLElement
+	if (menu) {
+		// If the menu is already open, wait for it to switch over to the newly selected node
+		// before editing. Otherwise we'll immediately enter edit mode on the old node.
+		await new Promise<void>(resolve => {
+			const unsub = onAttributeChange(menu, 'style', () => {
+				unsub()
+				resolve()
+			})
+		})
+	} else {
+		// If the menu is hidden, wait for it to be shown
+		await new Promise<void>(resolve => {
+			const unsub = onNewChild(canvas.wrapperEl, '.canvas-menu-container', () => {
+				unsub()
+				resolve()
+			})
+		})
+		menu = canvas.wrapperEl.querySelector('.canvas-menu-container') as HTMLElement
+	}
+
+	let editor = selectedNode.child.editMode?.cm.cm;
+	if (!editor) {
+		const editButton = menu.querySelector('[aria-label="Edit"]') as HTMLButtonElement;
+		editButton.click();
+		editor = selectedNode.child.editMode?.cm.cm;
+	}
+	if (!editor) {
+		throw new Error("No editor found even after clicking edit button");
+	}
+	if (selectedNode.lastCursor) {
+		editor.setCursor(selectedNode.lastCursor);
+	}
+}
 
 function getLinkAtCursor(editor: Editor): string | null {
     const cursor = editor.getCursor();

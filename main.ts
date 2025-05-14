@@ -1,7 +1,7 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { App, Editor, FileView, MarkdownView, Plugin, TFile, Workspace, WorkspaceLeaf } from 'obsidian';
 import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView } from 'Canvas';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 import { log } from 'util';
 
@@ -197,6 +197,16 @@ export default class SpatialGraphPanels extends Plugin {
 			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
 				const canvas = this.getActiveCanvas()
 
+				if (canvas.nodes.size === 0) {
+					return
+				}
+				if (canvas.nodes.size === 1) {
+					selectAndPanIntoView(canvas, getNodes(canvas)[0])
+					// If the only node is selected, the menu will never move
+					editSelectedNodeOnMenuReady(canvas, getNodes(canvas)[0], false)
+					return
+				}
+
 				function getOrigin() {
 					// We can't use the cursor because it's stuck in an iframe
 					const focusedPanel = getSingleSelectedNode(canvas)
@@ -208,6 +218,9 @@ export default class SpatialGraphPanels extends Plugin {
 				const origin = getOrigin()
 
 				const otherPanels = getUnselectedNodes(canvas)
+				if (otherPanels.length === 0) {
+					return
+				}
 
 				let panelToFocus: Node | undefined;
 				switch (direction) {
@@ -226,7 +239,7 @@ export default class SpatialGraphPanels extends Plugin {
 				}
 				if (panelToFocus) {
 					selectAndPanIntoView(canvas, panelToFocus)
-					editSelectedNode(canvas, panelToFocus)
+					editSelectedNodeOnMenuReady(canvas, panelToFocus)
 				}
 			}	
 		)
@@ -283,19 +296,21 @@ function centerOfNode(node: Node): Vector {
 function logAndReturn<T>(value: T): T {
 	console.log(value)
 	return value
-}	
+}
 
-async function editSelectedNode(canvas: Canvas, selectedNode: Node) {
+async function editSelectedNodeOnMenuReady(canvas: Canvas, selectedNode: Node, waitForMenuToMove: boolean = true) {
 	let menu = canvas.wrapperEl.querySelector('.canvas-menu-container') as HTMLElement
 	if (menu) {
-		// If the menu is already open, wait for it to switch over to the newly selected node
-		// before editing. Otherwise we'll immediately enter edit mode on the old node.
-		await new Promise<void>(resolve => {
-			const unsub = onAttributeChange(menu, 'style', () => {
-				unsub()
-				resolve()
+		if (waitForMenuToMove) {
+			// If the menu is already open, wait for it to switch over to the newly selected node
+			// before editing. Otherwise we'll immediately enter edit mode on the old node.
+			await new Promise<void>(resolve => {
+				const unsub = onAttributeChange(menu, 'style', () => {
+					unsub()
+					resolve()
+				})
 			})
-		})
+		}
 	} else {
 		// If the menu is hidden, wait for it to be shown
 		await new Promise<void>(resolve => {
@@ -304,9 +319,16 @@ async function editSelectedNode(canvas: Canvas, selectedNode: Node) {
 				resolve()
 			})
 		})
-		menu = canvas.wrapperEl.querySelector('.canvas-menu-container') as HTMLElement
 	}
 
+	editNodeSelectedNode(canvas, selectedNode)
+}
+
+function editNodeSelectedNode(canvas: Canvas, selectedNode: Node) {
+	let menu = canvas.wrapperEl.querySelector('.canvas-menu-container') as HTMLElement
+	if (!menu) {
+		throw new Error('No menu found')
+	}
 	let editor = selectedNode.child.editMode?.cm.cm;
 	if (!editor) {
 		const editButton = menu.querySelector('[aria-label="Edit"]') as HTMLButtonElement;

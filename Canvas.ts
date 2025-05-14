@@ -108,9 +108,13 @@ export function findNodeByFile(canvas: Canvas, filepath: string): Node | undefin
 }
 
 export function getUnselectedNodes(canvas: Canvas): Node[] {
-	return Array.from(canvas.nodes.values()).filter((node) => {
+	return getNodes(canvas).filter((node) => {
 		return !canvas.selection.has(node);
 	});
+}
+
+export function getNodes(canvas: Canvas): Node[] {
+	return Array.from(canvas.nodes.values());
 }
 
 export function writeNodeIdsToDom(canvas: Canvas) {

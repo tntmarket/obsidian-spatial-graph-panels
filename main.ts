@@ -1,6 +1,6 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { App, Editor, FileView, MarkdownView, Plugin, Workspace, WorkspaceLeaf } from 'obsidian';
-import { Vector, getAngle, getDistance } from 'Vector';
+import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
 import { Canvas, getSingleSelectedNode, writeNodeIdsToDom } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 
@@ -25,29 +25,29 @@ export default class SpatialGraphPanels extends Plugin {
 		this.addCommand({
 			id: `${id}-left`,
 			name: `${name} left`,
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				manipulateElement(view.containerEl, 'left')
+			callback: () => {
+				manipulateElement(this.app.workspace.containerEl, 'left')
 			}
 		});
 		this.addCommand({
 			id: `${id}-down`,
 			name: `${name} down`,
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				manipulateElement(view.containerEl, 'down')
+			callback: () => {
+				manipulateElement(this.app.workspace.containerEl, 'down')
 			}
 		});
 		this.addCommand({
 			id: `${id}-up`,
 			name: `${name} up`,
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				manipulateElement(view.containerEl, 'up')
+			callback: () => {
+				manipulateElement(this.app.workspace.containerEl, 'up')
 			}
 		});
 		this.addCommand({
 			id: `${id}-right`,
 			name: `${name} right`,
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				manipulateElement(view.containerEl, 'right')
+			callback: () => {
+				manipulateElement(this.app.workspace.containerEl, 'right')
 			}
 		});
 	}
@@ -92,6 +92,64 @@ export default class SpatialGraphPanels extends Plugin {
 				}
 			}
 		})
+
+		this.addCommandForEachDirection(
+			'focus-panel',
+			'Focus the panel to the',
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				function getOrigin() {
+					const cursor = element.querySelector('.cm-cursor-primary');
+					if (cursor) {
+						return {
+							x: cursor.getBoundingClientRect().left,
+							y: cursor.getBoundingClientRect().top,
+						}
+					}
+					const focusedPanel = element.querySelector('.is-focused')
+					if (focusedPanel) {
+						return {
+							x: focusedPanel.getBoundingClientRect().left,
+							y: focusedPanel.getBoundingClientRect().top,
+						}
+					}
+					return {x: 0, y: 0}
+				}
+
+				const origin = getOrigin()
+
+				const otherPanels = Array.from(element.querySelectorAll('.canvas-node'))
+					.filter(panel => !panel.classList.contains('is-focused'))
+					.map(panel => panel as HTMLElement)
+
+				function boxForPanel(panel: HTMLElement): Box {
+					return {
+						x: panel.getBoundingClientRect().left,
+						y: panel.getBoundingClientRect().top,
+						width: panel.getBoundingClientRect().width,
+						height: panel.getBoundingClientRect().height,
+					}
+				}
+
+				let panelToFocus: HTMLElement | undefined;
+				switch (direction) {
+					case 'left':
+						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 180, 140)
+						break;
+					case 'down':
+						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, -90, 140)
+						break;
+					case 'up':
+						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 90, 140)
+						break;
+					case 'right':
+						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 0, 140)
+						break;
+				}
+				if (panelToFocus) {
+					panelToFocus.click()
+				}
+			}	
+		)
 	}
 
 	saveCursorPositionForEachCanvasNode() {

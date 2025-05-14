@@ -1,4 +1,4 @@
-import { assumeExists } from 'assumeExists'
+import { assumeExists } from 'assertionUtils'
 import cytoscape, {NodeDataDefinition, NodeSingular} from 'cytoscape'
 
 

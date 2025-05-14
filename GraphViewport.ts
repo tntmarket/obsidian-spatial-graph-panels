@@ -1,5 +1,5 @@
 import cytoscape, {NodeCollection, NodeDefinition, NodeSingular} from 'cytoscape'
-import { getAngle, getDistance } from 'Vector'
+import { getAngle, getDistance } from 'Geometry'
 
 
 type NodeId = string

@@ -4,7 +4,7 @@ import {EdgeSingular, NodeSingular} from 'cytoscape'
 import cola from 'cytoscape-cola'
 import { GraphDomSynchronizer } from 'GraphDomSynchronizer'
 import { GraphViewport } from 'GraphViewport'
-import { Vector } from 'Vector'
+import { Vector } from 'Geometry'
 
 
 export type GraphData = {

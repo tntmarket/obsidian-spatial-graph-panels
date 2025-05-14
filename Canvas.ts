@@ -117,6 +117,10 @@ export function getNodes(canvas: Canvas): Node[] {
 	return Array.from(canvas.nodes.values());
 }
 
+export function getEdges(canvas: Canvas): Edge[] {
+	return Array.from(canvas.edges.values());
+}
+
 export function writeNodeIdsToDom(canvas: Canvas) {
 	canvas.nodes.forEach((node) => {
 		node.containerEl.dataset.nodeId = node.id;
@@ -166,3 +170,4 @@ export function selectAndPanIntoView(canvas: Canvas, node: Node) {
 	canvas.panIntoView(node.getBBox())
 	node.containerEl?.click()
 }
+

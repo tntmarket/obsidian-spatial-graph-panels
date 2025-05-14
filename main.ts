@@ -1,15 +1,14 @@
 import { GraphOverlay } from 'GraphOverlay';
-import { App, Editor, FileView, MarkdownView, Plugin, TFile, Workspace, WorkspaceLeaf } from 'obsidian';
-import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes } from 'Canvas';
+import { Editor, FileView, Plugin, TFile } from 'obsidian';
+import { Vector, closestInCone } from 'Geometry';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
-import { log } from 'util';
 
 export default class SpatialGraphPanels extends Plugin {
 	getGraph(): GraphOverlay {
 		let graphOverlay = this.app.workspace.containerEl.querySelector('.spatial-graph-overlay')
 		if (!graphOverlay) {
-			const overlayContainer = this.app.workspace.containerEl.querySelector('.mod-root')
+			const overlayContainer = this.app.workspace.containerEl.querySelector('.canvas-wrapper')
 			if (!overlayContainer) {
 				throw new Error('Container for graph overlay not instantiated yet')
 			}
@@ -103,6 +102,10 @@ export default class SpatialGraphPanels extends Plugin {
 			})
 		);
 
+		this.registerInterval(window.setInterval(() => {
+			this.refreshMinimap()
+		}, 50))
+
 		this.addCommand({
 			id: 'open-link-in-canvas',
 			name: 'Open link in canvas',
@@ -116,29 +119,10 @@ export default class SpatialGraphPanels extends Plugin {
 		})
 
 		this.addCommand({
-			id: 'edit-node',
-			name: 'Edit Currently Selected Node',
+			id: 'auto-layout-canvas',
+			name: 'Auto layout canvas',
 			callback: () => {
-				const canvas = this.getActiveCanvas()
-				const selectedNode = getSingleSelectedNode(canvas)
-				if (!selectedNode) {
-					return
-				}
-
-				let editor = selectedNode.child.editMode?.cm.cm
-				if (!editor) {
-					const editButton = canvas.wrapperEl.querySelector('.canvas-menu [aria-label="Edit"]') as HTMLButtonElement
-					if (editButton) {
-						editButton.click()
-					}
-					editor = selectedNode.child.editMode?.cm.cm
-					if (!editor) {
-						throw new Error('No editor found even after clicking edit button')
-					}
-					if (selectedNode.lastCursor) {
-						editor.setCursor(selectedNode.lastCursor)
-					}
-				}
+				this.refreshMinimap()
 			}
 		})
 
@@ -279,7 +263,26 @@ export default class SpatialGraphPanels extends Plugin {
 				}
 			})
 		})
+	}
 
+	refreshMinimap() {
+		const graph = this.getGraph()
+		const canvas = this.getActiveCanvas()
+		graph.setData({
+			nodes: getNodes(canvas).map(node => ({
+				id: node.id,	
+				position: {
+					x: node.x,
+					y: node.y,
+				},
+				width: node.width,
+				height: node.height,
+			})),
+			edges: getEdges(canvas).map(edge => ({
+				source: edge.from.node.id,
+				target: edge.to.node.id,
+			})),
+		})
 	}
 
 	onunload() {

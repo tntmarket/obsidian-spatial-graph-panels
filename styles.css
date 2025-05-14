@@ -6,3 +6,13 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.spatial-graph-overlay {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 400px;
+    height: 300px;
+    border: 1px solid #ccc;
+    pointer-events: none;
+}

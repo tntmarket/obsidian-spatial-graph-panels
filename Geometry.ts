@@ -14,7 +14,7 @@ export function getAngle(v1: Vector, v2: Vector, startingAt = 0): number {
 	return ((degrees + 360 - startingAt) % 360) + startingAt;
 }
 
-function getPanelCenter(box: Box): Vector {
+export function getBoxCenter(box: Box): Vector {
 	return {
 		x: box.x + box.width / 2,
 		y: box.y + box.height / 2,
@@ -28,10 +28,9 @@ export type Box = {
 	height: number
 }
 
-export function closestInCone<T>(
+export function closestInCone<T extends Box>(
 	origin: Vector,
 	items: T[],
-	boxForItem: (item: T) => Box,
 	coneCenter: number, 
 	coneWidth: number, 
 	doublingAngle = 70,
@@ -40,8 +39,8 @@ export function closestInCone<T>(
 	const higherAngle = coneCenter + coneWidth / 2
 	const polarDistances = items.map((item) => ({
 		item,
-		angle: getAngle(origin, getPanelCenter(boxForItem(item)), lowerAngle),
-		distance: getDistance(origin, getPanelCenter(boxForItem(item))),
+		angle: getAngle(origin, getBoxCenter(item), lowerAngle),
+		distance: getDistance(origin, getBoxCenter(item)),
 	}))
 
 	// Treat nodes offset by the doublingAngle as twice as far away
@@ -50,9 +49,11 @@ export function closestInCone<T>(
 
 	const polarDistancesInCone = polarDistances.filter(({angle}) => lowerAngle < angle && angle < higherAngle)
 
-	return minBy(
+	const shortestDistance = minBy(
 		polarDistancesInCone, 
 		({distance, angle}) => adjustedDistance(distance, angle - coneCenter)
-	)?.item
+	)
+
+	return shortestDistance?.item
 }
 

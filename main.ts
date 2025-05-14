@@ -1,7 +1,7 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { App, Editor, FileView, MarkdownView, Plugin, Workspace, WorkspaceLeaf } from 'obsidian';
 import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom } from 'Canvas';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 
 export default class SpatialGraphPanels extends Plugin {
@@ -97,56 +97,38 @@ export default class SpatialGraphPanels extends Plugin {
 			'focus-panel',
 			'Focus the panel to the',
 			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const canvas = this.getActiveCanvas()
+
 				function getOrigin() {
-					const cursor = element.querySelector('.cm-cursor-primary');
-					if (cursor) {
-						return {
-							x: cursor.getBoundingClientRect().left,
-							y: cursor.getBoundingClientRect().top,
-						}
-					}
-					const focusedPanel = element.querySelector('.is-focused')
+					// We can't use the cursor because it's stuck in an iframe
+					const focusedPanel = getSingleSelectedNode(canvas)
 					if (focusedPanel) {
-						return {
-							x: focusedPanel.getBoundingClientRect().left,
-							y: focusedPanel.getBoundingClientRect().top,
-						}
+						return centerOfNode(focusedPanel)
 					}
 					return {x: 0, y: 0}
 				}
-
 				const origin = getOrigin()
 
-				const otherPanels = Array.from(element.querySelectorAll('.canvas-node'))
-					.filter(panel => !panel.classList.contains('is-focused'))
-					.map(panel => panel as HTMLElement)
+				const otherPanels = getUnselectedNodes(canvas)
 
-				function boxForPanel(panel: HTMLElement): Box {
-					return {
-						x: panel.getBoundingClientRect().left,
-						y: panel.getBoundingClientRect().top,
-						width: panel.getBoundingClientRect().width,
-						height: panel.getBoundingClientRect().height,
-					}
-				}
-
-				let panelToFocus: HTMLElement | undefined;
+				let panelToFocus: Node | undefined;
 				switch (direction) {
 					case 'left':
-						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 180, 140)
+						panelToFocus = closestInCone(origin, otherPanels, 180, 140)
 						break;
 					case 'down':
-						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, -90, 140)
+						panelToFocus = closestInCone(origin, otherPanels, -90, 140)
 						break;
 					case 'up':
-						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 90, 140)
+						panelToFocus = closestInCone(origin, otherPanels, 90, 140)
 						break;
 					case 'right':
-						panelToFocus = closestInCone(origin, otherPanels, boxForPanel, 0, 140)
+						panelToFocus = closestInCone(origin, otherPanels, 0, 140)
 						break;
 				}
 				if (panelToFocus) {
-					panelToFocus.click()
+					panelToFocus.containerEl.click()
+					canvas.panIntoView(panelToFocus.getBBox())
 				}
 			}	
 		)
@@ -193,6 +175,13 @@ export default class SpatialGraphPanels extends Plugin {
 	}
 
 	onunload() {
+	}
+}
+
+function centerOfNode(node: Node): Vector {
+	return {
+		x: node.x + node.width / 2,
+		y: node.y + node.height / 2,
 	}
 }
 

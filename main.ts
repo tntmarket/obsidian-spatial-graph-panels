@@ -1,8 +1,9 @@
 import { GraphOverlay } from 'GraphOverlay';
-import { App, Editor, FileView, MarkdownView, Plugin, Workspace, WorkspaceLeaf } from 'obsidian';
+import { App, Editor, FileView, MarkdownView, Plugin, TFile, Workspace, WorkspaceLeaf } from 'obsidian';
 import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes } from 'Canvas';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
+import { log } from 'util';
 
 export default class SpatialGraphPanels extends Plugin {
 	getGraph(): GraphOverlay {
@@ -70,6 +71,34 @@ export default class SpatialGraphPanels extends Plugin {
 
 	async onload() {
 		this.saveCursorPositionForEachCanvasNode()
+
+		// Add context menu item for links
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file: TFile, source) => {
+				if (source !== 'link-context-menu') return;
+
+				menu.addItem((item) => {
+					item
+						.setTitle('Add as new card in canvas')
+						.setIcon('layout-cards')
+						.onClick(async () => {
+							spawnFileAsLeafOrPanToExisting(this.getActiveCanvas(), file)
+						});
+				});
+			})
+		);
+
+		this.addCommand({
+			id: 'open-link-in-canvas',
+			name: 'Open link in canvas',
+			editorCallback: (editor: Editor) => {
+				const link = getLinkAtCursor(editor)
+				if (!link) return
+				const file = this.app.metadataCache.getFirstLinkpathDest(link, '')
+				if (!file) return
+				spawnFileAsLeafOrPanToExisting(this.getActiveCanvas(), file)
+			}
+		})
 
 		this.addCommand({
 			id: 'edit-node',
@@ -181,8 +210,7 @@ export default class SpatialGraphPanels extends Plugin {
 						break;
 				}
 				if (panelToFocus) {
-					panelToFocus.containerEl.click()
-					canvas.panIntoView(panelToFocus.getBBox())
+					selectAndPanIntoView(canvas, panelToFocus)
 				}
 			}	
 		)
@@ -243,3 +271,25 @@ function logAndReturn<T>(value: T): T {
 	console.log(value)
 	return value
 }	
+
+function getLinkAtCursor(editor: Editor): string | null {
+    const cursor = editor.getCursor();
+    
+    const line = editor.getLine(cursor.line);
+    
+    const ch = cursor.ch;
+    
+    const wikiLinkRegex = /\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g;
+    let match;
+    
+    while ((match = wikiLinkRegex.exec(line)) !== null) {
+        const linkStart = match.index;
+        const linkEnd = linkStart + match[0].length;
+        
+        if (ch >= linkStart && ch <= linkEnd) {
+            return match[1]
+		}
+    }
+    
+    return null;
+}

@@ -55,6 +55,8 @@ export interface Canvas {
 
 	panIntoView(box: Box): void;
 	panBy(x: number, y: number): void;
+	createFileNode(options: { file: TFile; pos: { x: number; y: number } }): Node;
+	addEdge(options: { from: { node: Node }; to: { node: Node } }): Edge;
 }
 
 export function getSingleSelectedNode(canvas: Canvas): Node | null {
@@ -85,6 +87,12 @@ export function moveSelectedNodes(canvas: Canvas, x: number, y: number) {
 	})
 }
 
+export function findNodeByFile(canvas: Canvas, filepath: string): Node | undefined {
+	return Array.from(canvas.nodes.values()).find((node) => {
+		return node.file.path === filepath;
+	});
+}
+
 export function getUnselectedNodes(canvas: Canvas): Node[] {
 	return Array.from(canvas.nodes.values()).filter((node) => {
 		return !canvas.selection.has(node);
@@ -97,3 +105,45 @@ export function writeNodeIdsToDom(canvas: Canvas) {
 	});
 }
 
+export function spawnFileAsLeafOrPanToExisting(canvas: Canvas, file: TFile) {
+	let destinationNode: Node | undefined = findNodeByFile(canvas, file.path)
+	const selectedNode = getSingleSelectedNode(canvas)
+	if (!selectedNode) {
+		throw new Error('No selected node')
+	}
+	if (!destinationNode) {
+		destinationNode = canvas.createFileNode({
+			file,
+			pos: {
+				x: selectedNode.x + selectedNode.width + 100,
+				y: selectedNode.y - 100,
+			},
+		});
+	}
+
+	const edge = canvas.edges.get(`${selectedNode.id}-${destinationNode.id}`)
+	if (!edge) {
+		// There's no public constructor for Edge, so we workaround by importing a new edge
+		const canvasData = canvas.getData()
+		canvas.importData({
+			...canvasData,
+			edges: [
+				...canvasData.edges,
+				{
+					id: `${selectedNode.id}-${destinationNode.id}`,
+					fromNode: selectedNode.id,
+					fromSide: 'right',
+					toNode: destinationNode.id,
+					toSide: 'left',
+				}
+			]
+		})
+	}
+	selectAndPanIntoView(canvas, destinationNode)
+}
+
+
+export function selectAndPanIntoView(canvas: Canvas, node: Node) {
+	canvas.panIntoView(node.getBBox())
+	node.containerEl?.click()
+}

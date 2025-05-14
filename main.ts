@@ -58,19 +58,34 @@ export default class SpatialGraphPanels extends Plugin {
 		});
 	}
 
-	getActiveCanvas(): Canvas {
+	maybeGetCanvas(): Canvas | null {
 		const view = this.app.workspace.getActiveViewOfType(FileView)
-		// @ts-ignore
-		if (!view?.canvas) {
-			throw new Error('No canvas found')
+		if (!view) {
+			return null
 		}
 		// @ts-ignore
 		return view.canvas
 	}
 
+	getActiveCanvas(): Canvas {
+		const canvas = this.maybeGetCanvas()
+		if (!canvas) {
+			throw new Error('No canvas found')
+		}
+		return canvas
+	}
 
 	async onload() {
-		this.saveCursorPositionForEachCanvasNode()
+		this.registerEvent(
+			// On opening the canvas
+			this.app.workspace.on('active-leaf-change', () => {
+				const canvas = this.maybeGetCanvas()
+				if (!canvas) {
+					return
+				}
+				this.saveCursorPositionForEachCanvasNode(canvas)
+			})
+		)
 
 		// Add context menu item for links
 		this.registerEvent(
@@ -217,43 +232,40 @@ export default class SpatialGraphPanels extends Plugin {
 		)
 	}
 
-	saveCursorPositionForEachCanvasNode() {
-		// On opening the canvas
-		this.app.workspace.on('active-leaf-change', (leaf) => {
-			const canvas = this.getActiveCanvas()
-			const canvasEl = canvas.wrapperEl.querySelector('.canvas') as HTMLElement
-			// Ensure all nodes have a data-node-id
-			onNewChild(canvasEl, '.canvas-node', (nodeElement) => {
-				writeNodeIdsToDom(canvas)
-				const previewEl = nodeElement.querySelector('.canvas-node-content')?.firstChild as HTMLElement
-				// Listen to when edit mode is activated
-				onAttributeChange(previewEl, 'style', (style) => {
-					// By reacting when the preview is hidden
-					if (style.includes('display: none')) {
-						// Look up the node that corresponds to the just opened editor
-						const nodeId = nodeElement.querySelector('[data-node-id]')?.dataset.nodeId
-						if (!nodeId) {
-							throw new Error('No node id found')
-						}
-						const node = canvas.nodes.get(nodeId)
-						if (!node) {
-							throw new Error('No node found')
-						}
-						const editor = node.child.editMode?.cm.cm
-						if (!editor) {
-							throw new Error('No editor found after entering edit mode')
-						}
-						// Remember the cursor position upon exiting edit mode
-						editor.on('cursorActivity', () => {
-							node.lastCursor = editor.getCursor()
-						})
-						// We can't just snapshot the cursor upon exiting edit mode,
-						// because the editor is in an iframe that gets deleted when exiting edit mode
-						// and there doesn't seem to be a way to capture the cursor position before it gets deleted
+	saveCursorPositionForEachCanvasNode(canvas: Canvas) {
+		const canvasEl = canvas.wrapperEl.querySelector('.canvas') as HTMLElement
+		// Ensure all nodes have a data-node-id
+		onNewChild(canvasEl, '.canvas-node', (nodeElement) => {
+			writeNodeIdsToDom(canvas)
+			const previewEl = nodeElement.querySelector('.canvas-node-content')?.firstChild as HTMLElement
+			// Listen to when edit mode is activated
+			onAttributeChange(previewEl, 'style', (style) => {
+				// By reacting when the preview is hidden
+				if (style.includes('display: none')) {
+					// Look up the node that corresponds to the just opened editor
+					const nodeEl = nodeElement.querySelector('[data-node-id]') as HTMLElement;
+					const nodeId = nodeEl?.dataset.nodeId;
+					if (!nodeId) {
+						throw new Error('No node id found')
 					}
-				})
+					const node = canvas.nodes.get(nodeId)
+					if (!node) {
+						throw new Error('No node found')
+					}
+					const editor = node.child.editMode?.cm.cm
+					if (!editor) {
+						throw new Error('No editor found after entering edit mode')
+					}
+					// Remember the cursor position upon exiting edit mode
+					editor.on('cursorActivity', () => {
+						node.lastCursor = editor.getCursor()
+					})
+					// We can't just snapshot the cursor upon exiting edit mode,
+					// because the editor is in an iframe that gets deleted when exiting edit mode
+					// and there doesn't seem to be a way to capture the cursor position before it gets deleted
+				}
 			})
-		});
+		})
 
 	}
 

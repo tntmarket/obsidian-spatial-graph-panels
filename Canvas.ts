@@ -15,6 +15,16 @@ abstract class Edge {
 	};
 }
 
+type CanvasData = {
+	edges: {
+		id: string;
+		fromNode: string;
+		fromSide: 'left' | 'right' | 'top' | 'bottom';
+		toNode: string;
+		toSide: 'left' | 'right' | 'top' | 'bottom';
+	}[];
+};
+
 export interface Node {
 	id: NodeId;
 	height: number;
@@ -23,6 +33,7 @@ export interface Node {
 	y: number;
 	nodeEl: HTMLElement;
 	containerEl: HTMLElement;
+	file?: TFile;
 
 	child: {
 		editMode?: {
@@ -57,6 +68,9 @@ export interface Canvas {
 	panBy(x: number, y: number): void;
 	createFileNode(options: { file: TFile; pos: { x: number; y: number } }): Node;
 	addEdge(options: { from: { node: Node }; to: { node: Node } }): Edge;
+	getData(): CanvasData;
+	importData(data: CanvasData): void;
+	requestSave(): void;
 }
 
 export function getSingleSelectedNode(canvas: Canvas): Node | null {
@@ -83,13 +97,13 @@ export function moveSelectedNodes(canvas: Canvas, x: number, y: number) {
 			y: node.y + y,
 		})
 		canvas.panIntoView(node.getBBox())
-		console.log(node)
 	})
+	canvas.requestSave()
 }
 
 export function findNodeByFile(canvas: Canvas, filepath: string): Node | undefined {
 	return Array.from(canvas.nodes.values()).find((node) => {
-		return node.file.path === filepath;
+		return node.file?.path === filepath;
 	});
 }
 
@@ -140,6 +154,7 @@ export function spawnFileAsLeafOrPanToExisting(canvas: Canvas, file: TFile) {
 		})
 	}
 	selectAndPanIntoView(canvas, destinationNode)
+	canvas.requestSave()
 }
 
 

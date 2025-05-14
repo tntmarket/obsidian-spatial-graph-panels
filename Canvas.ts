@@ -33,6 +33,7 @@ export interface Node {
 	};
 
 	getBBox(): Box;
+	moveTo(position: { x: number; y: number }): void;
 
 	// Mutable state	
 	lastCursor?: Position;
@@ -53,18 +54,35 @@ export interface Canvas {
 	scale: number;
 
 	panIntoView(box: Box): void;
+	panBy(x: number, y: number): void;
 }
 
 export function getSingleSelectedNode(canvas: Canvas): Node | null {
-	if (canvas.selection.size !== 1) {
-		return null;
-	}
-	const element = Array.from(canvas.selection)[0];
-	// @ts-ignore
-	if (element.nodeEl) {
-		return element as Node;
+	const nodes = getSelectedNodes(canvas);
+	if (nodes.length === 1) {
+		return nodes[0];
 	}
 	return null;
+}
+
+export function getSelectedNodes(canvas: Canvas): Node[] {
+	const selectedNodes = Array.from(canvas.selection).filter((element) => {
+		// @ts-ignore
+		return element.nodeEl;
+	});
+	return selectedNodes as Node[];
+}
+
+export function moveSelectedNodes(canvas: Canvas, x: number, y: number) {
+	const nodes = getSelectedNodes(canvas);
+	nodes.forEach((node) => {
+		node.moveTo({
+			x: node.x + x,
+			y: node.y + y,
+		})
+		canvas.panIntoView(node.getBBox())
+		console.log(node)
+	})
 }
 
 export function getUnselectedNodes(canvas: Canvas): Node[] {

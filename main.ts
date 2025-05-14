@@ -1,7 +1,7 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { App, Editor, FileView, MarkdownView, Plugin, Workspace, WorkspaceLeaf } from 'obsidian';
 import { Box, Vector, closestInCone, getAngle, getDistance } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes } from 'Canvas';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 
 export default class SpatialGraphPanels extends Plugin {
@@ -21,34 +21,39 @@ export default class SpatialGraphPanels extends Plugin {
 		id: string,
 		name: string,
 		manipulateElement: (panelEl: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => void,
+		repeatable: boolean = false,
 	) {
 		this.addCommand({
 			id: `${id}-left`,
 			name: `${name} left`,
 			callback: () => {
 				manipulateElement(this.app.workspace.containerEl, 'left')
-			}
+			},
+			repeatable,
 		});
 		this.addCommand({
 			id: `${id}-down`,
 			name: `${name} down`,
 			callback: () => {
 				manipulateElement(this.app.workspace.containerEl, 'down')
-			}
+			},
+			repeatable,
 		});
 		this.addCommand({
 			id: `${id}-up`,
 			name: `${name} up`,
 			callback: () => {
 				manipulateElement(this.app.workspace.containerEl, 'up')
-			}
+			},
+			repeatable,
 		});
 		this.addCommand({
 			id: `${id}-right`,
 			name: `${name} right`,
 			callback: () => {
 				manipulateElement(this.app.workspace.containerEl, 'right')
-			}
+			},
+			repeatable,
 		});
 	}
 
@@ -94,8 +99,57 @@ export default class SpatialGraphPanels extends Plugin {
 		})
 
 		this.addCommandForEachDirection(
+			'pan-viewport',
+			'Pan the canvas',
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const canvas = this.getActiveCanvas()
+
+				switch (direction) {
+					case 'left':
+						canvas.panBy(-10, 0)
+						break;
+					case 'down':
+						canvas.panBy(0, 10)
+						break;
+					case 'up':
+						canvas.panBy(0, -10)
+						break;
+					case 'right':
+						canvas.panBy(10, 0)
+						break;
+				}
+			},
+			true
+		)
+
+		this.addCommandForEachDirection(
+			'move-node',
+			'Move the currently selected nodes',
+			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
+				const canvas = this.getActiveCanvas()
+
+				switch (direction) {
+					case 'left':
+						moveSelectedNodes(canvas, -10, 0)
+						break;
+					case 'down':
+						moveSelectedNodes(canvas, 0, 10)
+						break;
+					case 'up':
+						moveSelectedNodes(canvas, 0, -10)
+						break;
+					case 'right':
+						moveSelectedNodes(canvas, 10, 0)
+						break;
+				}
+			},
+			true
+		)
+
+
+		this.addCommandForEachDirection(
 			'focus-panel',
-			'Focus the panel to the',
+			'Focus whatever panel is',
 			(element: HTMLElement, direction: 'left' | 'right' | 'up' | 'down') => {
 				const canvas = this.getActiveCanvas()
 

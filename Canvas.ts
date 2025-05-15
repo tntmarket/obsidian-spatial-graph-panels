@@ -2,6 +2,7 @@ import { Editor, Position } from 'codemirror';
 import { Box } from 'Geometry';
 import { EventRef, Events, TFile } from 'obsidian';
 import { around } from 'monkey-around';
+import { waitForPropertyToExist } from 'asyncUtils';
 
 type NodeId = string;
 type EdgeId = string;
@@ -120,13 +121,6 @@ export function getNodes(canvas: Canvas): Node[] {
 
 export function getEdges(canvas: Canvas): Edge[] {
 	return Array.from(canvas.edges.values());
-}
-
-export function writeNodeIdsToDom(canvas: Canvas) {
-	canvas.nodes.forEach((node) => {
-		console.log('writeNodeIdsToDom', node.containerEl)
-		node.containerEl.dataset.nodeId = node.id;
-	});
 }
 
 export function spawnFileAsLeafOrPanToExisting(canvas: Canvas, file: TFile) {

@@ -1,8 +1,9 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { Editor, FileView, Plugin, TFile } from 'obsidian';
 import { Vector, closestInCone } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges, patchCanvasToDetectChanges, canvasEvent } from 'Canvas';
+import { Canvas, getSingleSelectedNode, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges, patchCanvasToDetectChanges, canvasEvent } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
+import { waitForPropertyToExist } from 'asyncUtils';
 
 export default class SpatialGraphPanels extends Plugin {
 	getGraph(): GraphOverlay {
@@ -137,7 +138,6 @@ export default class SpatialGraphPanels extends Plugin {
 			id: 'auto-layout-canvas',
 			name: 'Auto layout canvas',
 			callback: () => {
-				this.refreshMinimap()
 				this.getGraph().runLayout()
 			}
 		})
@@ -246,60 +246,16 @@ export default class SpatialGraphPanels extends Plugin {
 	}
 
 	async saveCursorPositionForEachCanvasNode(canvas: Canvas) {
-		// Ensure all nodes have a data-node-id
-		canvasEvent.on('CANVAS_NODE_ADDED', async (node) => {
-			await waitForPropertyToExist(node, 'containerEl')
-			const nodeElement = node.containerEl
-			nodeElement.dataset.nodeId = node.id;
-
-			const previewEl = nodeElement.querySelector('.canvas-node-content')?.firstChild as HTMLElement
-			// Listen to when edit mode is activated
-			onAttributeChange(previewEl, 'style', (style) => {
-				// By reacting when the preview is hidden
-				if (style.includes('display: none')) {
-					// Look up the node that corresponds to the just opened editor
-					const nodeEl = nodeElement.querySelector('[data-node-id]') as HTMLElement;
-					const nodeId = nodeEl?.dataset.nodeId;
-					if (!nodeId) {
-						throw new Error('No node id found')
-					}
-					const node = canvas.nodes.get(nodeId)
-					if (!node) {
-						throw new Error('No node found')
-					}
-					const editor = node.child.editMode?.cm.cm
-					if (!editor) {
-						throw new Error('No editor found after entering edit mode')
-					}
-					// Remember the cursor position upon exiting edit mode
-					editor.on('cursorActivity', () => {
-						node.lastCursor = editor.getCursor()
-					})
-					// We can't just snapshot the cursor upon exiting edit mode,
-					// because the editor is in an iframe that gets deleted when exiting edit mode
-					// and there doesn't seem to be a way to capture the cursor position before it gets deleted
-				}
-			})
+		canvas.nodes.forEach((node) => {
+			trackCursorPosition(canvas, node)
 		})
-	}
-
-	refreshMinimap() {
-		const canvas = this.getActiveCanvas()
+		canvasEvent.on('CANVAS_NODE_ADDED', (node) => {
+			trackCursorPosition(canvas, node)
+		})
 	}
 
 	onunload() {
 	}
-}
-
-function waitForPropertyToExist(obj: any, property: string): Promise<void> {
-	return new Promise((resolve) => {
-		const interval = setInterval(() => {
-			if (obj[property]) {
-				clearInterval(interval)
-				resolve()	
-			}
-		}, 50)
-	})
 }
 
 function centerOfNode(node: Node): Vector {
@@ -374,4 +330,39 @@ function getLinkAtCursor(editor: Editor): string | null {
     }
     
     return null;
+}
+
+async function trackCursorPosition(canvas: Canvas, node: Node) {
+	// Ensure node can be looked up from the DOM
+	await waitForPropertyToExist(node, 'containerEl')
+	const nodeElement = node.containerEl
+	nodeElement.dataset.nodeId = node.id;
+
+	const previewEl = nodeElement.querySelector('.canvas-node-content')?.firstChild as HTMLElement
+	// Listen to when edit mode is activated
+	onAttributeChange(previewEl, 'style', (style) => {
+		// By reacting when the preview is hidden
+		if (style.includes('display: none')) {
+			// Look up the node that corresponds to the just opened editor
+			const nodeId = (nodeElement as HTMLElement).dataset.nodeId;
+			if (!nodeId) {
+				throw new Error('No node id found')
+			}
+			const node = canvas.nodes.get(nodeId)
+			if (!node) {
+				throw new Error('No node found')
+			}
+			const editor = node.child.editMode?.cm.cm
+			if (!editor) {
+				throw new Error('No editor found after entering edit mode')
+			}
+			// Remember the cursor position upon exiting edit mode
+			editor.on('cursorActivity', () => {
+				node.lastCursor = editor.getCursor()
+			})
+			// We can't just snapshot the cursor upon exiting edit mode,
+			// because the editor is in an iframe that gets deleted when exiting edit mode
+			// and there doesn't seem to be a way to capture the cursor position before it gets deleted
+		}
+	})
 }

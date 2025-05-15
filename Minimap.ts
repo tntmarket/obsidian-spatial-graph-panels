@@ -1,12 +1,12 @@
-import { canvasEvent } from 'Canvas'
+import { canvasEvent, Node, Edge } from 'Canvas'
 import cytoscape, { EdgeSingular, NodeSingular } from 'cytoscape'
 // @ts-ignore
 import cola from 'cytoscape-cola'
 
-import { Vector } from 'Geometry'
+import { getBoxCenter, Vector } from 'Geometry'
 
 
-export type GraphData = {
+export type CytoscapeData = {
     nodes: NodeData[]
     edges: EdgeData[]
 }
@@ -17,12 +17,13 @@ type NodeData = {
     height: number
 }
 type EdgeData = {
+    id: string
     source: string
     target: string
 }
 
 const getCytoscapeStyles = () => {
-    const color = '#000000'
+    const color = '#333333'
     const selectionColor = '#000000'
     return [
         {
@@ -40,6 +41,7 @@ const getCytoscapeStyles = () => {
                 'source-arrow-color': color,
                 'curve-style': 'bezier',
                 'target-arrow-shape': 'triangle',
+                'width': 15,
             },
         },
         {
@@ -56,8 +58,8 @@ const getCytoscapeStyles = () => {
 
 cytoscape.use(cola)
 
-export class GraphOverlay {
-    static instance: GraphOverlay | null
+export class Minimap {
+    static instance: Minimap | null
 
     private cy: cytoscape.Core
     private layout: cytoscape.Layouts | null
@@ -79,7 +81,7 @@ export class GraphOverlay {
                 },
             })
             node.style('width', data.width).style('height', data.height)
-            node.position({ x: data.x, y: data.y })
+            node.position(getBoxCenter(data))
             this.cy.fit(undefined, 50)
         })
         canvasEvent.on('CANVAS_NODE_CHANGED', (data) => {
@@ -92,7 +94,7 @@ export class GraphOverlay {
                 return
             }
             node.style('width', data.width).style('height', data.height)
-            node.position({ x: data.x, y: data.y })
+            node.position(getBoxCenter(data))
             this.cy.fit(undefined, 50)
         })
         canvasEvent.on('CANVAS_NODE_REMOVED', (data) => {
@@ -124,9 +126,16 @@ export class GraphOverlay {
                 edge.remove()
             }
         })
+
+        canvasEvent.on('CANVAS_SELECT', (selection: Set<Node | Edge>) => {
+            this.cy.$(':selected').unselect()
+            selection.forEach((selected) => {
+                this.cy.getElementById(selected.id).select()
+            })
+        })
     }
 
-    async setData(data: GraphData) {
+    async setData(data: CytoscapeData) {
         this.cy.batch(() => {
             data.nodes.forEach(({id, position, width, height}) => {
                 let node = this.cy.getElementById(id)[0]
@@ -143,11 +152,13 @@ export class GraphOverlay {
                     node.position(position)
                 }
             })
-            data.edges.forEach(({source, target}) => {
+            data.edges.forEach(({id, source, target}) => {
                 let edge = this.getEdge(source, target)
                 if (!edge) {
+                    console.log('adding edge', id, source, target)
                     edge = this.cy.add({
                         data: {
+                            id,
                             source,
                             target,
                         },
@@ -165,17 +176,9 @@ export class GraphOverlay {
                 name: 'cola',
                 // @ts-ignore
                 fit: false,
-                // @ts-ignore
                 animate: true,
-                // @ts-ignore don't actually shorten the simulation, otherwise it gets stuck prematurely
-                maxSimulationTime: 4000,
-                // @ts-ignore instead we skip frames
-                refresh: 1,
-                // @ts-ignore how tight the layout needs to be
-                convergenceThreshold: 0.01,
-                // @ts-ignore
-                nodeSpacing: 100,
-                // @ts-ignore
+                maxSimulationTime: 1000,
+                nodeSpacing: 50,
                 centerGraph: false,
             })
             .run()
@@ -206,17 +209,18 @@ export class GraphOverlay {
         this.cy.destroy()
     }
 
-    static get(container: HTMLElement): GraphOverlay {
-        if (!GraphOverlay.instance) {
-            GraphOverlay.instance = new GraphOverlay(container)
+    static get(container: HTMLElement): Minimap {
+        if (!Minimap.instance) {
+            Minimap.instance = new Minimap(container)
         }
-        return GraphOverlay.instance
+        return Minimap.instance
     }
 
     static cleanup() {
-        if (GraphOverlay.instance) {
-            GraphOverlay.instance.cleanup()
-            GraphOverlay.instance = null
+        if (Minimap.instance) {
+            Minimap.instance.cleanup()
+            Minimap.instance = null
         }
     }
 }
+

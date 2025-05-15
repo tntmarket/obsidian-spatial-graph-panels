@@ -1,4 +1,6 @@
+import { Node } from "Canvas";
 import { minBy } from "collectionUtils";
+import { Vector } from "Geometry";
 
 export type Vector = { x: number; y: number; };
 
@@ -15,9 +17,18 @@ export function getAngle(v1: Vector, v2: Vector, startingAt = 0): number {
 }
 
 export function getBoxCenter(box: Box): Vector {
+	// Convert from top left origin to center origin
 	return {
 		x: box.x + box.width / 2,
 		y: box.y + box.height / 2,
+	}
+}	
+
+export function getBoxTopLeft(box: Box): Vector {
+	// Convert from center origin to top left origin
+	return {
+		x: box.x - box.width / 2,
+		y: box.y - box.height / 2,
 	}
 }	
 
@@ -55,5 +66,11 @@ export function closestInCone<T extends Box>(
 	)
 
 	return shortestDistance?.item
+}
+export function centerOfBox(node: Box): Vector {
+    return {
+        x: node.x + node.width / 2,
+        y: node.y + node.height / 2,
+    }
 }
 

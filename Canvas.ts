@@ -7,7 +7,7 @@ import { waitForPropertyToExist } from 'asyncUtils';
 type NodeId = string;
 type EdgeId = string;
 
-abstract class Edge {
+export interface Edge {
 	id: EdgeId;
 	from: {
 		node: Node;
@@ -60,6 +60,7 @@ export interface Canvas {
 	edges: Map<EdgeId, Edge>;
 	nodes: Map<NodeId, Node>;
 	selection: Set<Node | Edge>;
+	edgeFrom: Map<Node, Set<Node>>;
 
 	wrapperEl: HTMLElement;
 	x: number;
@@ -139,8 +140,8 @@ export function spawnFileAsLeafOrPanToExisting(canvas: Canvas, file: TFile) {
 		});
 	}
 
-	const edge = canvas.edges.get(`${selectedNode.id}-${destinationNode.id}`)
-	if (!edge) {
+	const existingEdges = canvas.edgeFrom.get(selectedNode)
+	if (!existingEdges?.has(destinationNode)) {
 		// There's no public constructor for Edge, so we workaround by importing a new edge
 		const canvasData = canvas.getData()
 		canvas.importData({
@@ -178,7 +179,7 @@ interface CanvasEvent extends Events {
 	on(name: 'CANVAS_EDGE_DISCONNECTED', callback: (data: Edge) => any, ctx?: any): EventRef;
 
 	on(name: 'CANVAS_NODE_MOVED', callback: (data: Node) => any, ctx?: any): EventRef;
-	on(name: 'CANVAS_SELECT', callback: () => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_SELECT', callback: (selection: Set<Node | Edge>) => any, ctx?: any): EventRef;
 
 	on(name: 'CANVAS_VIEWPORT_CHANGED', callback: () => any, ctx?: any): EventRef;
 }
@@ -212,10 +213,9 @@ export function patchCanvasToDetectChanges(canvas: Canvas): CanvasEvent {
 				unconnectedEdgeIds.delete(args[0].id)
 				return result
 			},
-			select: (original: any) => function(...args: any[]) {
+			updateSelection: (original: any) => function(...args: any[]) {
 				const result = original.apply(this, args);
-				console.log('select', ...args)
-				canvasEvent.trigger('CANVAS_SELECT', ...args)
+				canvasEvent.trigger('CANVAS_SELECT', this.selection)
 				return result
 			},
 			markMoved: (original: any) => function(...args: any[]) {

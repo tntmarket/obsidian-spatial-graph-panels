@@ -1,13 +1,14 @@
-import { GraphOverlay } from 'GraphOverlay';
+import { Minimap } from 'Minimap';
 import { Editor, FileView, Plugin, TFile } from 'obsidian';
-import { Vector, closestInCone } from 'Geometry';
+import { closestInCone, getBoxCenter, getBoxTopLeft } from 'Geometry';
 import { Canvas, getSingleSelectedNode, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges, patchCanvasToDetectChanges, canvasEvent } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 import { waitForPropertyToExist } from 'asyncUtils';
 import { NodeSingular } from 'cytoscape';
+import { get } from 'http';
 
 export default class SpatialGraphPanels extends Plugin {
-	getGraph(): GraphOverlay {
+	getGraph(): Minimap {
 		let graphOverlay = this.app.workspace.containerEl.querySelector('.canvas-minimap')
 		if (!graphOverlay) {
 			const overlayContainer = this.app.workspace.containerEl.querySelector('.mod-root')
@@ -16,7 +17,7 @@ export default class SpatialGraphPanels extends Plugin {
 			}
 			graphOverlay = overlayContainer.createEl('div', {cls: 'canvas-minimap'})
 		}
-		return GraphOverlay.get(graphOverlay as HTMLElement)
+		return Minimap.get(graphOverlay as HTMLElement)
 	}
 
 	addCommandForEachDirection(
@@ -91,14 +92,12 @@ export default class SpatialGraphPanels extends Plugin {
 				graph.setData({
 					nodes: getNodes(canvas).map(node => ({
 						id: node.id,	
-						position: {
-							x: node.x,
-							y: node.y,
-						},
+						position: getBoxCenter(node),
 						width: node.width,
 						height: node.height,
 					})),
 					edges: getEdges(canvas).map(edge => ({
+						id: edge.id,
 						source: edge.from.node.id,
 						target: edge.to.node.id,
 					})),
@@ -145,10 +144,12 @@ export default class SpatialGraphPanels extends Plugin {
 					if (!node) {
 						throw new Error('Cytoscape node has no corresponding canvas node')
 					}
-					node.moveTo({
+					node.moveTo(getBoxTopLeft({
 						x: cyNode.position().x,
 						y: cyNode.position().y,
-					})
+						width: cyNode.width(),
+						height: cyNode.height(),
+					}))
 				})
 			}
 		})
@@ -222,7 +223,7 @@ export default class SpatialGraphPanels extends Plugin {
 					// We can't use the cursor because it's stuck in an iframe
 					const focusedPanel = getSingleSelectedNode(canvas)
 					if (focusedPanel) {
-						return centerOfNode(focusedPanel)
+						return getBoxCenter(focusedPanel)
 					}
 					return {x: 0, y: 0}
 				}
@@ -266,13 +267,6 @@ export default class SpatialGraphPanels extends Plugin {
 	}
 
 	onunload() {
-	}
-}
-
-function centerOfNode(node: Node): Vector {
-	return {
-		x: node.x + node.width / 2,
-		y: node.y + node.height / 2,
 	}
 }
 

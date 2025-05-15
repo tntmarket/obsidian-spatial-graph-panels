@@ -15,4 +15,5 @@ If your plugin does not need CSS, delete this file.
     height: 300px !important;
     border: 1px solid #ccc;
     pointer-events: none;
+    z-index: 1000;
 }

@@ -1,7 +1,7 @@
 import { GraphOverlay } from 'GraphOverlay';
 import { Editor, FileView, Plugin, TFile } from 'obsidian';
 import { Vector, closestInCone } from 'Geometry';
-import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges } from 'Canvas';
+import { Canvas, getSingleSelectedNode, writeNodeIdsToDom, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges, patchCanvasToDetectChanges, canvasEvent } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 
 export default class SpatialGraphPanels extends Plugin {
@@ -83,16 +83,24 @@ export default class SpatialGraphPanels extends Plugin {
 					return
 				}
 				this.saveCursorPositionForEachCanvasNode(canvas)
-				this.refreshMinimap()
-			})
-		)
 
-		this.registerEvent(
-			this.app.vault.on('modify', (file) => {
-				if(!this.getActiveCanvas()) {
-					return
-				}
-				this.refreshMinimap()
+				patchCanvasToDetectChanges(canvas)
+				const graph = this.getGraph()
+				graph.setData({
+					nodes: getNodes(canvas).map(node => ({
+						id: node.id,	
+						position: {
+							x: node.x,
+							y: node.y,
+						},
+						width: node.width,
+						height: node.height,
+					})),
+					edges: getEdges(canvas).map(edge => ({
+						source: edge.from.node.id,
+						target: edge.to.node.id,
+					})),
+				})
 			})
 		)
 
@@ -237,11 +245,13 @@ export default class SpatialGraphPanels extends Plugin {
 		)
 	}
 
-	saveCursorPositionForEachCanvasNode(canvas: Canvas) {
-		const canvasEl = canvas.wrapperEl.querySelector('.canvas') as HTMLElement
+	async saveCursorPositionForEachCanvasNode(canvas: Canvas) {
 		// Ensure all nodes have a data-node-id
-		onNewChild(canvasEl, '.canvas-node', (nodeElement) => {
-			writeNodeIdsToDom(canvas)
+		canvasEvent.on('CANVAS_NODE_ADDED', async (node) => {
+			await waitForPropertyToExist(node, 'containerEl')
+			const nodeElement = node.containerEl
+			nodeElement.dataset.nodeId = node.id;
+
 			const previewEl = nodeElement.querySelector('.canvas-node-content')?.firstChild as HTMLElement
 			// Listen to when edit mode is activated
 			onAttributeChange(previewEl, 'style', (style) => {
@@ -274,27 +284,22 @@ export default class SpatialGraphPanels extends Plugin {
 	}
 
 	refreshMinimap() {
-		const graph = this.getGraph()
 		const canvas = this.getActiveCanvas()
-		graph.setData({
-			nodes: getNodes(canvas).map(node => ({
-				id: node.id,	
-				position: {
-					x: node.x,
-					y: node.y,
-				},
-				width: node.width,
-				height: node.height,
-			})),
-			edges: getEdges(canvas).map(edge => ({
-				source: edge.from.node.id,
-				target: edge.to.node.id,
-			})),
-		})
 	}
 
 	onunload() {
 	}
+}
+
+function waitForPropertyToExist(obj: any, property: string): Promise<void> {
+	return new Promise((resolve) => {
+		const interval = setInterval(() => {
+			if (obj[property]) {
+				clearInterval(interval)
+				resolve()	
+			}
+		}, 50)
+	})
 }
 
 function centerOfNode(node: Node): Vector {
@@ -302,11 +307,6 @@ function centerOfNode(node: Node): Vector {
 		x: node.x + node.width / 2,
 		y: node.y + node.height / 2,
 	}
-}
-
-function logAndReturn<T>(value: T): T {
-	console.log(value)
-	return value
 }
 
 async function editSelectedNodeOnMenuReady(canvas: Canvas, selectedNode: Node, waitForMenuToMove: boolean = true) {

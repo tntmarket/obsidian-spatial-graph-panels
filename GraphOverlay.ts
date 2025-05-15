@@ -1,3 +1,4 @@
+import { canvasEvent } from 'Canvas'
 import cytoscape, { EdgeSingular } from 'cytoscape'
 // @ts-ignore
 import cola from 'cytoscape-cola'
@@ -54,7 +55,6 @@ const getCytoscapeStyles = () => {
 }
 
 cytoscape.use(cola)
-console.log(cola)
 
 export class GraphOverlay {
     static instance: GraphOverlay | null
@@ -68,6 +68,57 @@ export class GraphOverlay {
             style: getCytoscapeStyles(),
         })
         this.layout = null
+        this.trackCanvasElements()
+    }
+
+    trackCanvasElements() {
+        canvasEvent.on('CANVAS_NODE_ADDED', (data) => {
+            const node = this.cy.add({
+                data: {
+                    id: data.id,
+                },
+            })
+            node.style('width', data.width).style('height', data.height)
+            node.position({ x: data.x, y: data.y })
+            this.cy.fit(undefined, 50)
+        })
+        canvasEvent.on('CANVAS_NODE_MOVED', (data) => {
+            const node = this.cy.getElementById(data.id)[0]
+            if (!node) {
+                return
+            }
+            node.position({ x: data.x, y: data.y })
+            this.cy.fit(undefined, 50)
+        })
+        canvasEvent.on('CANVAS_NODE_REMOVED', (data) => {
+            const node = this.cy.getElementById(data.id)[0]
+            if (node) {
+                node.remove()
+            }
+            this.cy.fit(undefined, 50)
+        })
+
+        canvasEvent.on('CANVAS_EDGE_REMOVED', (data) => {
+            const edge = this.cy.getElementById(data.id)[0]
+            if (edge) {
+                edge.remove()
+            }
+        })
+        canvasEvent.on('CANVAS_EDGE_CONNECTED', (data) => {
+            this.cy.add({
+                data: {
+                    id: data.id,
+                    source: data.from.node.id,
+                    target: data.to.node.id,
+                },
+            })
+        })
+        canvasEvent.on('CANVAS_EDGE_DISCONNECTED', (data) => {
+            const edge = this.cy.getElementById(data.id)[0]
+            if (edge) {
+                edge.remove()
+            }
+        })
     }
 
     async setData(data: GraphData) {
@@ -103,7 +154,6 @@ export class GraphOverlay {
     }
 
     runLayout(onLayoutChange: () => void): Promise<any> {
-        console.log('running layout')
         this.layout?.stop()
         this.layout = this.cy
             .layout({
@@ -134,9 +184,7 @@ export class GraphOverlay {
 
     private async waitForLayout() {
         if (this.layout) {
-            console.log('layout started')
             await this.layout.promiseOn('layoutstop')
-            console.log('layout stopped')
             this.layout = null
         }
     }

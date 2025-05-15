@@ -1,6 +1,7 @@
 import { Editor, Position } from 'codemirror';
 import { Box } from 'Geometry';
-import { TFile } from 'obsidian';
+import { EventRef, Events, TFile } from 'obsidian';
+import { around } from 'monkey-around';
 
 type NodeId = string;
 type EdgeId = string;
@@ -123,6 +124,7 @@ export function getEdges(canvas: Canvas): Edge[] {
 
 export function writeNodeIdsToDom(canvas: Canvas) {
 	canvas.nodes.forEach((node) => {
+		console.log('writeNodeIdsToDom', node.containerEl)
 		node.containerEl.dataset.nodeId = node.id;
 	});
 }
@@ -169,5 +171,91 @@ export function spawnFileAsLeafOrPanToExisting(canvas: Canvas, file: TFile) {
 export function selectAndPanIntoView(canvas: Canvas, node: Node) {
 	canvas.panIntoView(node.getBBox())
 	node.containerEl?.click()
+}
+
+interface CanvasEvent extends Events {
+	on(name: 'CANVAS_NODE_ADDED', callback: (data: Node) => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_NODE_REMOVED', callback: (data: Node) => any, ctx?: any): EventRef;
+
+	on(name: 'CANVAS_EDGE_ADDED', callback: (data: Edge) => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_EDGE_REMOVED', callback: (data: Edge) => any, ctx?: any): EventRef;	
+	on(name: 'CANVAS_EDGE_CONNECTED', callback: (data: Edge) => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_EDGE_DISCONNECTED', callback: (data: Edge) => any, ctx?: any): EventRef;
+
+	on(name: 'CANVAS_NODE_MOVED', callback: (data: Node) => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_SELECT', callback: () => any, ctx?: any): EventRef;
+
+	on(name: 'CANVAS_VIEWPORT_CHANGED', callback: () => any, ctx?: any): EventRef;
+}
+export const canvasEvent = new Events() as CanvasEvent
+let canvasPatched = false
+const unconnectedEdgeIds = new Set<EdgeId>()
+
+export function patchCanvasToDetectChanges(canvas: Canvas): CanvasEvent {
+	console.log(canvas.constructor.prototype)
+	if(!canvasPatched) {
+		const uninstaller = around(canvas.constructor.prototype, {
+			addNode: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				canvasEvent.trigger('CANVAS_NODE_ADDED', ...args)
+				return result
+			},
+			addEdge: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				canvasEvent.trigger('CANVAS_EDGE_ADDED', ...args)
+				unconnectedEdgeIds.add(args[0].id)
+				return result
+			},
+			removeNode: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				canvasEvent.trigger('CANVAS_NODE_REMOVED', ...args)
+				return result
+			},
+			removeEdge: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				canvasEvent.trigger('CANVAS_EDGE_REMOVED', ...args)
+				unconnectedEdgeIds.delete(args[0].id)
+				return result
+			},
+			select: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				console.log('select', ...args)
+				canvasEvent.trigger('CANVAS_SELECT', ...args)
+				return result
+			},
+			markMoved: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				const item = args[0]
+
+				if (item.nodeEl) {
+					console.log('markMoved', ...args)
+					canvasEvent.trigger('CANVAS_NODE_MOVED', ...args)
+				}
+
+				function isConnectedEdge(edge: Edge) {
+					return (
+						!edge.to?.node.nodeEl.classList.contains('is-dummy') &&
+						!edge.from?.node.nodeEl.classList.contains('is-dummy')
+					)
+				}
+				if(unconnectedEdgeIds.has(item.id) && isConnectedEdge(item)) {
+					unconnectedEdgeIds.delete(item.id)
+					canvasEvent.trigger('CANVAS_EDGE_CONNECTED', ...args)
+				} else if (!unconnectedEdgeIds.has(item.id) && !isConnectedEdge(item)) {
+					unconnectedEdgeIds.add(item.id)
+					canvasEvent.trigger('CANVAS_EDGE_DISCONNECTED', ...args)
+				}
+				return result
+			},
+			markViewportChanged: (original: any) => function(...args: any[]) {
+				const result = original.apply(this, args);
+				canvasEvent.trigger('CANVAS_VIEWPORT_CHANGED', ...args)
+				return result
+			},
+		});
+		canvasPatched = true
+		return canvasEvent
+	}
+	return canvasEvent;
 }
 

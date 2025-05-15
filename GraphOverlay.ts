@@ -80,9 +80,12 @@ export class GraphOverlay {
                             id,
                         },
                     })
-                    console.log('adding node', node)
                 }
-                node.position(position).style('width', width).style('height', height)
+                node.style('width', width).style('height', height)
+                // Don't override position during layout
+                if (!this.layout) {
+                    node.position(position)
+                }
             })
             data.edges.forEach(({source, target}) => {
                 let edge = this.getEdge(source, target)
@@ -93,14 +96,13 @@ export class GraphOverlay {
                             target,
                         },
                     })
-                    console.log('adding edge', edge)
                 }
             })
         })
         this.cy.fit(undefined, 50)
     }
 
-    runLayout(): Promise<any> {
+    runLayout(onLayoutChange: () => void): Promise<any> {
         console.log('running layout')
         this.layout?.stop()
         this.layout = this.cy
@@ -118,8 +120,14 @@ export class GraphOverlay {
                 convergenceThreshold: 0.01,
                 // @ts-ignore
                 nodeSpacing: 100,
+                // @ts-ignore
+                centerGraph: false,
             })
             .run()
+
+        this.layout.on('layoutchange', () => {
+            onLayoutChange()
+        })
 
         return this.waitForLayout()
     }

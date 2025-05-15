@@ -6,13 +6,13 @@ import { onNewChild, onAttributeChange } from 'observeDom';
 
 export default class SpatialGraphPanels extends Plugin {
 	getGraph(): GraphOverlay {
-		let graphOverlay = this.app.workspace.containerEl.querySelector('.spatial-graph-overlay')
+		let graphOverlay = this.app.workspace.containerEl.querySelector('.canvas-minimap')
 		if (!graphOverlay) {
-			const overlayContainer = this.app.workspace.containerEl.querySelector('.canvas-wrapper')
+			const overlayContainer = this.app.workspace.containerEl.querySelector('.mod-root')
 			if (!overlayContainer) {
 				throw new Error('Container for graph overlay not instantiated yet')
 			}
-			graphOverlay = overlayContainer.createEl('div', {cls: 'spatial-graph-overlay'})
+			graphOverlay = overlayContainer.createEl('div', {cls: 'canvas-minimap'})
 		}
 		return GraphOverlay.get(graphOverlay as HTMLElement)
 	}
@@ -83,6 +83,16 @@ export default class SpatialGraphPanels extends Plugin {
 					return
 				}
 				this.saveCursorPositionForEachCanvasNode(canvas)
+				this.refreshMinimap()
+			})
+		)
+
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if(!this.getActiveCanvas()) {
+					return
+				}
+				this.refreshMinimap()
 			})
 		)
 
@@ -102,9 +112,6 @@ export default class SpatialGraphPanels extends Plugin {
 			})
 		);
 
-		this.registerInterval(window.setInterval(() => {
-			this.refreshMinimap()
-		}, 50))
 
 		this.addCommand({
 			id: 'open-link-in-canvas',
@@ -123,6 +130,7 @@ export default class SpatialGraphPanels extends Plugin {
 			name: 'Auto layout canvas',
 			callback: () => {
 				this.refreshMinimap()
+				this.getGraph().runLayout()
 			}
 		})
 

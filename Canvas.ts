@@ -170,6 +170,7 @@ export function selectAndPanIntoView(canvas: Canvas, node: Node) {
 interface CanvasEvent extends Events {
 	on(name: 'CANVAS_NODE_ADDED', callback: (data: Node) => any, ctx?: any): EventRef;
 	on(name: 'CANVAS_NODE_REMOVED', callback: (data: Node) => any, ctx?: any): EventRef;
+	on(name: 'CANVAS_NODE_CHANGED', callback: (data: Node) => any, ctx?: any): EventRef;
 
 	on(name: 'CANVAS_EDGE_ADDED', callback: (data: Edge) => any, ctx?: any): EventRef;
 	on(name: 'CANVAS_EDGE_REMOVED', callback: (data: Edge) => any, ctx?: any): EventRef;	
@@ -222,8 +223,7 @@ export function patchCanvasToDetectChanges(canvas: Canvas): CanvasEvent {
 				const item = args[0]
 
 				if (item.nodeEl) {
-					console.log('markMoved', ...args)
-					canvasEvent.trigger('CANVAS_NODE_MOVED', ...args)
+					canvasEvent.trigger('CANVAS_NODE_CHANGED', ...args)
 				}
 
 				function isConnectedEdge(edge: Edge) {

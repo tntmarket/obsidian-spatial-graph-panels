@@ -82,7 +82,7 @@ export class GraphOverlay {
             node.position({ x: data.x, y: data.y })
             this.cy.fit(undefined, 50)
         })
-        canvasEvent.on('CANVAS_NODE_MOVED', (data) => {
+        canvasEvent.on('CANVAS_NODE_CHANGED', (data) => {
             // Don't follow the canvas during layout, to avoid feedback loop
             if (this.layout) {
                 return
@@ -91,6 +91,7 @@ export class GraphOverlay {
             if (!node) {
                 return
             }
+            node.style('width', data.width).style('height', data.height)
             node.position({ x: data.x, y: data.y })
             this.cy.fit(undefined, 50)
         })

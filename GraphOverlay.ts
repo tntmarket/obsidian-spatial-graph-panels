@@ -1,5 +1,5 @@
 import { canvasEvent } from 'Canvas'
-import cytoscape, { EdgeSingular } from 'cytoscape'
+import cytoscape, { EdgeSingular, NodeSingular } from 'cytoscape'
 // @ts-ignore
 import cola from 'cytoscape-cola'
 
@@ -83,6 +83,10 @@ export class GraphOverlay {
             this.cy.fit(undefined, 50)
         })
         canvasEvent.on('CANVAS_NODE_MOVED', (data) => {
+            // Don't follow the canvas during layout, to avoid feedback loop
+            if (this.layout) {
+                return
+            }
             const node = this.cy.getElementById(data.id)[0]
             if (!node) {
                 return
@@ -153,7 +157,7 @@ export class GraphOverlay {
         this.cy.fit(undefined, 50)
     }
 
-    runLayout(onLayoutChange: () => void): Promise<any> {
+    async runLayout(onLayoutChange: (node: NodeSingular) => void): Promise<any> {
         this.layout?.stop()
         this.layout = this.cy
             .layout({
@@ -175,11 +179,15 @@ export class GraphOverlay {
             })
             .run()
 
-        this.layout.on('layoutchange', () => {
-            onLayoutChange()
+        this.cy.on('position', (event) => {
+            onLayoutChange(event.target)
         })
 
-        return this.waitForLayout()
+        await this.waitForLayout()
+
+        this.cy.off('position')
+
+        return
     }
 
     private async waitForLayout() {

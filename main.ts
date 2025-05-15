@@ -4,6 +4,7 @@ import { Vector, closestInCone } from 'Geometry';
 import { Canvas, getSingleSelectedNode, Node, getUnselectedNodes, moveSelectedNodes, spawnFileAsLeafOrPanToExisting, selectAndPanIntoView, getNodes, getEdges, patchCanvasToDetectChanges, canvasEvent } from 'Canvas';
 import { onNewChild, onAttributeChange } from 'observeDom';
 import { waitForPropertyToExist } from 'asyncUtils';
+import { NodeSingular } from 'cytoscape';
 
 export default class SpatialGraphPanels extends Plugin {
 	getGraph(): GraphOverlay {
@@ -138,7 +139,17 @@ export default class SpatialGraphPanels extends Plugin {
 			id: 'auto-layout-canvas',
 			name: 'Auto layout canvas',
 			callback: () => {
-				this.getGraph().runLayout()
+				this.getGraph().runLayout((cyNode: NodeSingular) => {
+					const canvas = this.getActiveCanvas()
+					const node = canvas.nodes.get(cyNode.id())
+					if (!node) {
+						throw new Error('Cytoscape node has no corresponding canvas node')
+					}
+					node.moveTo({
+						x: cyNode.position().x,
+						y: cyNode.position().y,
+					})
+				})
 			}
 		})
 
